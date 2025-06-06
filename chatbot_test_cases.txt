@@ -1,0 +1,243 @@
+🧪 JORDAN LEGAL CHATBOT - COMPREHENSIVE TEST CASES
+==================================================
+
+📋 TESTING CHECKLIST - Copy questions below and test one by one
+
+═══════════════════════════════════════════════════════════════
+
+🟢 LEVEL 1: BASIC INTERFACE TESTING
+═══════════════════════════════════════════════════════════════
+
+✅ Test 1.1: Page Load & Design
+- Open: http://localhost:5002
+- EXPECT: Modern chat interface, NOT old Q&A form
+- EXPECT: Welcome message with quick question buttons
+- EXPECT: Chat bubbles interface (like WhatsApp/ChatGPT)
+
+✅ Test 1.2: Quick Questions  
+- Click: "ما هي حقوق المستهلك في الأردن؟"
+- EXPECT: Question appears in blue bubble (right side)
+- EXPECT: Typing indicator with animated dots
+- EXPECT: Response in white bubble (left side)
+- EXPECT: Timestamps on messages
+
+✅ Test 1.3: Manual Typing
+Type: "ما هي شروط تأسيس الشركات؟"
+- Press Enter (should send message)
+- EXPECT: No page reload, stays in chat
+- EXPECT: Previous messages still visible
+
+✅ Test 1.4: Text Area Features
+- Type long message (multiple lines)
+- Try Shift+Enter (should add new line)
+- Try regular Enter (should send)
+- EXPECT: Text area expands as you type
+
+═══════════════════════════════════════════════════════════════
+
+🟡 LEVEL 2: CONVERSATION MEMORY TESTING
+═══════════════════════════════════════════════════════════════
+
+✅ Test 2.1: Basic Follow-up (Companies)
+1. Ask: "ما هي شروط تأسيس الشركات؟"
+2. Wait for response
+3. Ask: "وما هو رأس المال المطلوب؟"
+4. Ask: "هل يمكن للأجانب تأسيس شركات؟"
+
+EXPECT: Each follow-up should understand you're still talking about companies
+
+✅ Test 2.2: Reference Previous Answer
+1. Ask: "ما هي أنواع الشركات في القانون الأردني؟"
+2. Wait for response (should list different types)
+3. Ask: "أخبرني أكثر عن النوع الثاني"
+4. Ask: "ما هي مزايا هذا النوع؟"
+
+EXPECT: Should reference the second type mentioned earlier
+
+✅ Test 2.3: Topic Switching & Context
+1. Ask: "ما هي حقوق المستهلك؟"
+2. Ask: "وما هي واجبات التاجر؟"
+3. Ask: "كيف أشتكي على متجر؟"
+4. Ask: "الآن أريد أن أسأل عن الاستثمار"
+5. Ask: "ما هي شروط الاستثمار الأجنبي؟"
+6. Ask: "ارجع لموضوع المستهلك، ماذا عن الضمان؟"
+
+EXPECT: Should switch contexts appropriately and remember previous topics
+
+═══════════════════════════════════════════════════════════════
+
+🟠 LEVEL 3: INTELLIGENCE & ACCURACY TESTING  
+═══════════════════════════════════════════════════════════════
+
+✅ Test 3.1: Step-by-Step Process Questions
+Ask: "ما هي إجراءات التسجيل التجاري؟"
+EXPECT: 
+- Numbered steps (الخطوة 1، الخطوة 2...)
+- Specific law article references
+- Required documents mentioned
+- Clear process flow
+
+✅ Test 3.2: Complex Legal Scenario
+Ask: "أريد استيراد معدات طبية من ألمانيا، ما هي جميع الخطوات القانونية المطلوبة؟"
+EXPECT:
+- Multiple laws referenced (import, medical equipment, etc.)
+- Step-by-step process
+- Required approvals and licenses
+- Specific government departments mentioned
+
+✅ Test 3.3: Legal Comparison Questions
+Ask: "ما هو الفرق بين الشركة المحدودة والشركة المساهمة؟"
+EXPECT:
+- Clear comparison format
+- Specific differences listed
+- Legal article references for each type
+- Practical implications explained
+
+═══════════════════════════════════════════════════════════════
+
+🔴 LEVEL 4: ADVANCED CONVERSATION TESTING
+═══════════════════════════════════════════════════════════════
+
+✅ Test 4.1: Multi-Turn Deep Dive
+1. "ما هي شروط فتح مصنع في الأردن؟"
+2. "وماذا لو كان مصنع أدوية؟" 
+3. "هل تختلف الشروط للشراكة مع شركة أجنبية؟"
+4. "ما هي المدة الزمنية للحصول على التراخيص؟"
+5. "وإذا تم رفض الطلب؟"
+6. "هل يمكن الاستئناف؟"
+
+EXPECT: Each question builds on previous context
+
+✅ Test 4.2: Clarification Requests
+1. "ما هي قوانين حماية البيانات في الأردن؟"
+2. "وضح أكثر"
+3. "اشرح الجزء المتعلق بالشركات"
+4. "أعطني مثال عملي"
+5. "هذا غير واضح، اشرح بشكل أبسط"
+
+EXPECT: Should provide clarifications and examples
+
+✅ Test 4.3: Rapid Fire Testing
+Ask these questions quickly one after another:
+1. "ما هي أنواع الاستثمار؟"
+2. "متى يعتبر مؤهلاً للحوافز؟"
+3. "ما هي الحوافز المتاحة؟"
+4. "كيف أتقدم بطلب؟"
+5. "ما مدة الموافقة؟"
+6. "هل يمكن التجديد؟"
+
+EXPECT: Each answer should be relevant and maintain context
+
+═══════════════════════════════════════════════════════════════
+
+🟣 LEVEL 5: EDGE CASES & ERROR HANDLING
+═══════════════════════════════════════════════════════════════
+
+✅ Test 5.1: Vague Questions
+Ask: "أريد أن أعمل تجارة"
+EXPECT: Should ask for clarification or provide general guidance
+
+✅ Test 5.2: Non-Legal Questions  
+Ask: "ما هو الطقس اليوم؟"
+EXPECT: Should politely redirect to legal topics
+
+✅ Test 5.3: Very Long Messages
+Type a very long question (200+ words) about a complex legal scenario
+EXPECT: Should handle long input and provide comprehensive response
+
+✅ Test 5.4: Empty/Short Messages
+Try: "نعم" or "لا" or "شكراً"
+EXPECT: Should ask for clarification or provide helpful guidance
+
+═══════════════════════════════════════════════════════════════
+
+🎯 FINAL ADVANCED TEST SEQUENCE
+═══════════════════════════════════════════════════════════════
+
+Try this complete conversation flow to test everything:
+
+1. "مرحبا، أريد تأسيس شركة في الأردن"
+2. "ما هي أنواع الشركات المتاحة؟"
+3. "أريد شركة محدودة، ما هي الشروط؟"
+4. "كم رأس المال المطلوب؟"
+5. "هل يمكن أن يكون شريكي أجنبي؟"
+6. "ما هي إجراءات التسجيل؟"
+7. "كم تستغرق هذه الإجراءات؟"
+8. "وإذا رفضت الدائرة الطلب؟"
+9. "هل يمكنني الاستئناف؟"
+10. "أين أجد المزيد من المعلومات؟"
+11. "شكراً، الآن أريد أن أسأل عن شيء آخر"
+12. "ما هي قوانين حماية المستهلك؟"
+13. "ارجع لموضوع الشركة، هل يمكن تغيير اسم الشركة بعد التسجيل؟"
+
+═══════════════════════════════════════════════════════════════
+
+📊 WHAT TO CHECK FOR IN RESPONSES:
+═══════════════════════════════════════════════════════════════
+
+✅ FORMATTING:
+- No ** or ## symbols (should be plain Arabic text)
+- Clear numbered lists for procedures
+- Proper Arabic grammar and flow
+- References to specific law articles
+
+✅ MEMORY:
+- References to previous questions
+- Maintains context across questions
+- Remembers specific details mentioned earlier
+- Can switch and return to previous topics
+
+✅ INTELLIGENCE:
+- Finds relevant legal documents
+- Provides specific law article numbers
+- Gives practical, actionable advice
+- Handles complex multi-law scenarios
+
+✅ USER EXPERIENCE:
+- Fast response times
+- Intuitive chat interface
+- Smooth animations and interactions
+- Mobile-friendly design
+
+═══════════════════════════════════════════════════════════════
+
+🚨 RED FLAGS TO WATCH FOR:
+═══════════════════════════════════════════════════════════════
+
+❌ Interface Problems:
+- Page reloads on message send
+- Messages don't appear in bubbles
+- No typing indicator
+- Broken send button
+
+❌ Memory Problems:
+- Doesn't remember previous context
+- Asks for information already provided
+- Can't reference earlier parts of conversation
+- Loses topic focus
+
+❌ Content Problems:
+- Generic answers without legal specifics
+- No law article references
+- Markdown formatting (** symbols)
+- Wrong or irrelevant legal information
+
+❌ Performance Problems:
+- Very slow responses (>30 seconds)
+- Frequent errors or timeouts
+- Interface freezing or breaking
+
+═══════════════════════════════════════════════════════════════
+
+💡 SUCCESS CRITERIA:
+═══════════════════════════════════════════════════════════════
+
+🎯 EXCELLENT CHATBOT should:
+1. Feel like talking to a knowledgeable legal assistant
+2. Remember and reference previous conversation parts
+3. Provide specific, accurate legal information
+4. Handle complex multi-part questions intelligently  
+5. Have a smooth, modern chat interface
+6. Respond quickly and reliably
+
+Test these cases systematically and note any issues! 🧪📝 

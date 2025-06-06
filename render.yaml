@@ -1,0 +1,22 @@
+services:
+  - type: web
+    name: jordan-legal-rag
+    env: python
+    plan: starter
+    buildCommand: pip install -r requirements_simple.txt
+    startCommand: gunicorn --bind 0.0.0.0:$PORT advanced_web_demo:app
+    envVars:
+      - key: PYTHON_VERSION
+        value: 3.9.18
+      - key: OPENAI_API_KEY
+        sync: false
+      - key: FLASK_ENV
+        value: production
+      - key: PORT
+        value: 10000
+    healthCheckPath: /health
+    autoDeploy: true
+    disk:
+      name: jordan-legal-data
+      mountPath: /opt/render/project/src/chroma_db
+      sizeGB: 1 
