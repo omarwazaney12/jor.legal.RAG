@@ -11,7 +11,10 @@ from advanced_rag_system import AdvancedLegalRAGSystem
 class DeploymentRAGSystem(AdvancedLegalRAGSystem):
     """RAG system optimized for deployment - works with existing embeddings only"""
     
-    def __init__(self, chroma_db_path: str = "./chroma_db"):
+    def __init__(self, chroma_db_path: str = None):
+        # Use environment variable for Render persistent storage
+        if chroma_db_path is None:
+            chroma_db_path = os.getenv('CHROMA_DB_PATH', './chroma_db')
         self.chroma_db_path = Path(chroma_db_path)
         
         # Initialize without documents path
@@ -85,10 +88,11 @@ def initialize_deployment_system():
     """Initialize system for deployment"""
     print("🚀 Initializing Deployment Legal RAG System...")
     
-    # Check if ChromaDB exists
-    chroma_path = Path("./chroma_db")
+    # Check if ChromaDB exists - use environment variable for Render
+    chroma_path_str = os.getenv('CHROMA_DB_PATH', './chroma_db')
+    chroma_path = Path(chroma_path_str)
     if not chroma_path.exists():
-        print("❌ ChromaDB not found. Please ensure embeddings are available.")
+        print(f"❌ ChromaDB not found at {chroma_path}. Please ensure embeddings are available.")
         return None
     
     system = DeploymentRAGSystem()

@@ -282,9 +282,10 @@ class AdvancedVectorStore:
             max_retries=3
         )
         
-        # Initialize ChromaDB
+        # Initialize ChromaDB - use persistent storage path on Render
+        chroma_path = os.getenv('CHROMA_DB_PATH', './chroma_db')
         self.chroma_client = chromadb.PersistentClient(
-            path="./chroma_db",
+            path=chroma_path,
             settings=Settings(allow_reset=True)
         )
         
