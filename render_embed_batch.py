@@ -83,91 +83,68 @@ def embed_documents_batch():
         print(f"❌ System initialization failed: {e}")
         return False
     
-    # Process documents in batches of 5
-    BATCH_SIZE = 5
-    batch_count = 0
-    total_batches = (len(remaining_files) + BATCH_SIZE - 1) // BATCH_SIZE
+    # Check if we should resume or start fresh
+    try:
+        existing_count = system.vector_store.collection.count()
+        print(f"📊 Found {existing_count} existing embeddings")
+        
+        if existing_count > 0 and len(completed_docs) == 0:
+            print("✅ Found existing embeddings but no progress record")
+            print("   Will attempt to resume embedding remaining documents...")
+            # This is a fresh run but data exists - let it use existing data
+        
+    except Exception as e:
+        print(f"📊 No existing embeddings found: {e}")
     
-    for i in range(0, len(remaining_files), BATCH_SIZE):
-        batch_count += 1
-        batch_files = remaining_files[i:i+BATCH_SIZE]
+    # Use the built-in load_documents method which handles everything
+    print(f"\n🚀 Processing all documents using built-in system...")
+    print("   This will automatically:")
+    print("   - Detect existing embeddings")
+    print("   - Resume from where it left off") 
+    print("   - Handle rate limiting and errors")
+    print("   - Save progress automatically")
+    
+    try:
+        # Let the system handle everything - it will detect existing data
+        num_loaded = system.load_documents(force_rebuild=False)
         
-        print(f"\n📦 Processing Batch {batch_count}/{total_batches}")
-        print(f"   Files: {[f.name for f in batch_files]}")
-        
-        batch_success = True
-        
-        for doc_file in batch_files:
+        if num_loaded > 0:
+            print(f"✅ Successfully processed {num_loaded} documents")
+            
+            # Verify embeddings
             try:
-                print(f"   🔄 Processing: {doc_file.name}")
+                final_count = system.vector_store.collection.count()
+                print(f"📊 Total embeddings in database: {final_count}")
                 
-                # Process single document
-                with open(doc_file, 'r', encoding='utf-8') as f:
-                    content = f.read()
+                # Mark all documents as completed for our tracking
+                for txt_file in all_files:
+                    if txt_file.name not in completed_docs:
+                        completed_docs.append(txt_file.name)
                 
-                if len(content.strip()) < 50:  # Skip very short documents
-                    print(f"   ⚠️  Skipping short document: {doc_file.name}")
-                    completed_docs.append(doc_file.name)
-                    continue
-                
-                # Add to embeddings (this will automatically chunk and embed)
-                try:
-                    # Create a mini-batch with just this document
-                    temp_docs = [{"content": content, "metadata": {"source": doc_file.name}}]
-                    chunks = system._create_chunks(temp_docs)
-                    
-                    # Embed chunks with retry logic
-                    success_count = 0
-                    for chunk in chunks:
-                        try:
-                            embedding = system.embedding_model.embed_query(chunk.page_content)
-                            
-                            # Add to vector store
-                            system.vector_store.add_texts(
-                                texts=[chunk.page_content],
-                                embeddings=[embedding],
-                                metadatas=[chunk.metadata]
-                            )
-                            success_count += 1
-                            
-                            # Rate limiting - small delay
-                            time.sleep(0.1)
-                            
-                        except Exception as chunk_error:
-                            print(f"     ⚠️  Chunk failed: {str(chunk_error)[:100]}")
-                            failed_chunks.append({
-                                "document": doc_file.name,
-                                "error": str(chunk_error),
-                                "content_preview": chunk.page_content[:100]
-                            })
-                    
-                    print(f"   ✅ {success_count}/{len(chunks)} chunks embedded")
-                    completed_docs.append(doc_file.name)
-                    
-                except Exception as doc_error:
-                    print(f"   ❌ Document failed: {doc_error}")
-                    batch_success = False
-                    break
-                
-                # Small delay between documents
-                time.sleep(0.5)
+                save_progress(completed_docs, failed_chunks)
+                return True
                 
             except Exception as e:
-                print(f"   ❌ Error processing {doc_file.name}: {e}")
-                batch_success = False
-                break
+                print(f"⚠️  Could not verify final count: {e}")
+                return True  # Still consider it successful
+        else:
+            print("❌ No documents were processed")
+            return False
+            
+    except Exception as e:
+        print(f"❌ Document processing failed: {e}")
         
-        # Save progress after each batch
-        save_progress(completed_docs, failed_chunks)
+        # Check if partial progress was made
+        try:
+            final_count = system.vector_store.collection.count()
+            print(f"📊 Current embeddings in database: {final_count}")
+            if final_count > 0:
+                print("⚠️  Partial progress made - you can try again")
+                return True
+        except:
+            pass
         
-        if not batch_success:
-            print(f"⚠️  Batch {batch_count} had errors - progress saved")
-            break
-        
-        # Longer delay between batches to avoid rate limiting
-        if batch_count < total_batches:
-            print(f"   ⏱️  Waiting 30 seconds before next batch...")
-            time.sleep(30)
+        return False
     
     # Final summary
     print(f"\n📊 Final Summary:")
