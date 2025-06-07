@@ -1,0 +1,39 @@
+{
+  "total_documents": 100,
+  "sections": {
+    "laws": {
+      "name": "القوانين",
+      "pages_scraped": 4,
+      "document_count": 31,
+      "word_count": 226657,
+      "character_count": 1462389,
+      "successful_extractions": 23,
+      "failed_extractions": 8
+    },
+    "systems": {
+      "name": "الأنظمة",
+      "pages_scraped": 3,
+      "document_count": 30,
+      "word_count": 132806,
+      "character_count": 862165,
+      "successful_extractions": 22,
+      "failed_extractions": 8
+    },
+    "instructions": {
+      "name": "التعليمات",
+      "pages_scraped": 4,
+      "document_count": 39,
+      "word_count": 51709,
+      "character_count": 350795,
+      "successful_extractions": 20,
+      "failed_extractions": 19
+    }
+  },
+  "total_words": 411172,
+  "total_characters": 2675349,
+  "successful_extractions": 65,
+  "failed_extractions": 35,
+  "total_file_size": 90383560,
+  "scraping_method": "selenium_with_pagination",
+  "pages_scraped": 11
+}

@@ -1,0 +1,50 @@
+{
+  "total_documents": 101,
+  "constitution_included": true,
+  "successful_extractions": 101,
+  "failed_extractions": 0,
+  "ocr_recoveries": 35,
+  "success_rate": "100.0%",
+  "total_words": 602794,
+  "total_characters": 3537699,
+  "total_file_size": 91971847,
+  "sections": {
+    "constitution": {
+      "name": "الدستور الأردني",
+      "document_count": 1,
+      "successful_extractions": 1,
+      "failed_extractions": 0,
+      "ocr_recoveries": 0,
+      "word_count": 10891,
+      "character_count": 54386
+    },
+    "laws": {
+      "name": "القوانين",
+      "document_count": 31,
+      "successful_extractions": 31,
+      "failed_extractions": 0,
+      "ocr_recoveries": 8,
+      "word_count": 263652,
+      "character_count": 1631616
+    },
+    "systems": {
+      "name": "الأنظمة",
+      "document_count": 30,
+      "successful_extractions": 30,
+      "failed_extractions": 0,
+      "ocr_recoveries": 8,
+      "word_count": 158020,
+      "character_count": 984130
+    },
+    "instructions": {
+      "name": "التعليمات",
+      "document_count": 39,
+      "successful_extractions": 39,
+      "failed_extractions": 0,
+      "ocr_recoveries": 19,
+      "word_count": 170231,
+      "character_count": 867567
+    }
+  },
+  "processing_method": "comprehensive_with_constitution_ocr_and_recovery"
+}

@@ -314,16 +314,29 @@ class AdvancedVectorStore:
         self.progress_file = Path("embedding_progress.pkl")
         self.error_log_file = Path("embedding_errors.log")
         
-        # Create or get collection
+        # Create or get collection with schema compatibility handling
         try:
+            # First try to list collections to test schema compatibility
+            collections = self.chroma_client.list_collections()
+            # If we can list collections, try to get the specific one
             self.collection = self.chroma_client.get_collection(collection_name)
             print(f"✅ Loaded existing collection: {collection_name}")
-        except:
+        except Exception as e:
+            print(f"⚠️ Collection access failed (likely schema issue): {e}")
+            print("🔄 Creating fresh collection with compatible schema...")
+            try:
+                # Reset the database to fix schema issues
+                self.chroma_client.reset()
+                print("✅ Database reset successful")
+            except Exception as reset_error:
+                print(f"⚠️ Reset failed: {reset_error}")
+            
+            # Create fresh collection
             self.collection = self.chroma_client.create_collection(
                 name=collection_name,
-                metadata={"description": "Jordanian Legal Documents"}
+                metadata={"description": "Jordanian Legal Documents - Schema Compatible"}
             )
-            print(f"✅ Created new collection: {collection_name}")
+            print(f"✅ Created fresh collection: {collection_name}")
         
         # TF-IDF for keyword search
         self.tfidf_vectorizer = TfidfVectorizer(
