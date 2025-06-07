@@ -275,12 +275,16 @@ class AdvancedVectorStore:
     def __init__(self, collection_name: str = "jordanian_legal_docs"):
         self.collection_name = collection_name
         
-        # Initialize embeddings with timeout
-        self.embeddings = OpenAIEmbeddings(
-            model="text-embedding-3-large",
-            request_timeout=120,  # 2 minute timeout
-            max_retries=3
-        )
+        # Initialize embeddings with timeout - compatible with older OpenAI versions
+        try:
+            self.embeddings = OpenAIEmbeddings(
+                model="text-embedding-3-large"
+            )
+        except Exception as e:
+            print(f"⚠️  Using fallback embedding model due to: {e}")
+            self.embeddings = OpenAIEmbeddings(
+                model="text-embedding-ada-002"
+            )
         
         # Initialize ChromaDB - use persistent storage path on Render
         chroma_path = os.getenv('CHROMA_DB_PATH', './chroma_db')
