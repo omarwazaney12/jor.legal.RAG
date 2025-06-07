@@ -415,16 +415,24 @@ def initialize_system():
     try:
         legal_system = AdvancedLegalRAGSystem()
         
-        # Load all documents
-        num_docs = legal_system.load_documents()
+        # Load embeddings (check if ChromaDB has data)
+        embeddings_loaded = legal_system.load_embeddings_only()
         
-        if num_docs > 0:
-            print(f"✅ System ready with {num_docs} documents!")
-            return True
+        if embeddings_loaded:
+            # Check actual collection count
+            try:
+                collection_count = legal_system.vector_store.collection.count()
+                print(f"✅ System ready with {collection_count} embedded documents!")
+                print("🎯 Full functionality enabled - ChromaDB loaded successfully")
+                return True
+            except Exception as e:
+                print(f"⚠️ Could not verify collection count: {e}")
+                print("✅ System initialized - assuming data is available")
+                return True
         else:
-            print("⚠️ No documents loaded - system will start in limited mode")
-            print("🔧 Upload ChromaDB data via shell to enable full functionality")
-            # Still initialize the system for web interface
+            print("⚠️ No embeddings loaded - ChromaDB appears empty")
+            print("🔧 System initialized but will show limited mode until data is available")
+            # Still keep the system initialized for web interface
             return True
     except Exception as e:
         print(f"⚠️ System initialization warning: {e}")
@@ -1753,11 +1761,24 @@ def home():
 def process_query():
     """Process legal query using advanced system with input validation"""
     try:
+        # Check if system is initialized and has data
         if not legal_system:
             return jsonify({
                 'success': False,
                 'error': 'النظام في وضع محدود - لم يتم تحميل قاعدة البيانات بعد. يرجى تحميل ملفات ChromaDB أولاً. | System in limited mode - database not loaded yet. Please upload ChromaDB files first.'
             })
+        
+        # Check if ChromaDB has actual data
+        try:
+            collection_count = legal_system.vector_store.collection.count()
+            if collection_count == 0:
+                return jsonify({
+                    'success': False,
+                    'error': 'النظام مُهيأ ولكن قاعدة البيانات فارغة. يتم تحميل البيانات... | System initialized but database is empty. Loading data...'
+                })
+        except Exception as e:
+            print(f"⚠️ Could not check collection count: {e}")
+            # Continue anyway - system might still work
         
         data = request.get_json()
         query = data.get('query', '').strip()
@@ -1924,13 +1945,26 @@ if __name__ == '__main__':
     
     print("🌐 Starting web server...")
     if legal_system:
-        print("📊 System ready with advanced features:")
-        print("   • Hybrid semantic + keyword search")
-        print("   • Query type classification")
-        print("   • Multi-step reasoning")
-        print("   • Confidence scoring")
-        print("   • Source attribution")
-        print("   • Conversation memory")
+        # Check if we have data
+        try:
+            collection_count = legal_system.vector_store.collection.count()
+            if collection_count > 0:
+                print(f"📊 System ready with advanced features ({collection_count} documents):")
+                print("   • Hybrid semantic + keyword search")
+                print("   • Query type classification")
+                print("   • Multi-step reasoning")
+                print("   • Confidence scoring")
+                print("   • Source attribution")
+                print("   • Conversation memory")
+                print("   🎯 Full Jordan Legal RAG functionality enabled!")
+            else:
+                print("📊 System initialized but ChromaDB is empty:")
+                print("   • Web interface available")
+                print("   • Waiting for ChromaDB data to enable full functionality")
+        except Exception as e:
+            print(f"📊 System initialized (data status unknown: {e}):")
+            print("   • Web interface available")
+            print("   • Will detect data availability on first query")
     else:
         print("📊 System started in limited mode:")
         print("   • Web interface available")
