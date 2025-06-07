@@ -62,8 +62,21 @@ def embed_all_documents():
     start_time = datetime.now()
     
     try:
-        # Force rebuild to ensure fresh, compatible embeddings
-        num_loaded = system.load_documents(force_rebuild=True)
+        # Check existing embeddings first, only rebuild if empty
+        try:
+            existing_count = system.vector_store.collection.count()
+            print(f"📊 Found {existing_count} existing embeddings")
+            force_rebuild = (existing_count < 100)  # Only rebuild if very few embeddings
+        except:
+            print("📊 No existing embeddings found - starting fresh")
+            force_rebuild = True
+        
+        if force_rebuild:
+            print("🔄 Starting fresh embedding process...")
+        else:
+            print("✅ Resuming embedding process...")
+            
+        num_loaded = system.load_documents(force_rebuild=force_rebuild)
         
         if num_loaded > 0:
             end_time = datetime.now()
