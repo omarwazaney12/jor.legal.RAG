@@ -424,7 +424,6 @@ class AdvancedVectorStore:
             if existing_count > 0 and not force_rebuild:
                 print("✅ Using existing collection. Building TF-IDF index for hybrid search...")
                 # Build TF-IDF for hybrid search
-                from langchain.text_splitter import RecursiveCharacterTextSplitter
                 splitter = RecursiveCharacterTextSplitter(
                     chunk_size=chunk_size,
                     chunk_overlap=100,
