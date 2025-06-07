@@ -281,10 +281,17 @@ class AdvancedVectorStore:
                 model="text-embedding-3-large"
             )
         except Exception as e:
-            print(f"⚠️  Using fallback embedding model due to: {e}")
-            self.embeddings = OpenAIEmbeddings(
-                model="text-embedding-ada-002"
-            )
+            print(f"⚠️  Primary embedding model failed: {e}")
+            try:
+                print("🔄 Trying fallback model...")
+                self.embeddings = OpenAIEmbeddings(
+                    model="text-embedding-ada-002"
+                )
+            except Exception as e2:
+                print(f"⚠️  Fallback model also failed: {e2}")
+                print("🔄 Trying basic OpenAI embeddings...")
+                # Last resort - try with minimal configuration
+                self.embeddings = OpenAIEmbeddings()
         
         # Initialize ChromaDB - use persistent storage path on Render
         chroma_path = os.getenv('CHROMA_DB_PATH', './chroma_db')
