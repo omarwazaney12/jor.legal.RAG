@@ -275,11 +275,9 @@ class AdvancedVectorStore:
     def __init__(self, collection_name: str = "jordanian_legal_docs"):
         self.collection_name = collection_name
         
-        # Initialize embeddings with timeout (using ada-002 for consistency with pre-built embeddings)
+        # Initialize embeddings (using ada-002 for consistency with pre-built embeddings)
         self.embeddings = OpenAIEmbeddings(
-            model="text-embedding-ada-002",
-            request_timeout=120,  # 2 minute timeout
-            max_retries=3
+            model="text-embedding-ada-002"
         )
         
         # Initialize ChromaDB with in-memory client (no SQLite issues)
