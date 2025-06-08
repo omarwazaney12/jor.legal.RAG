@@ -275,10 +275,8 @@ class AdvancedVectorStore:
     def __init__(self, collection_name: str = "jordanian_legal_docs"):
         self.collection_name = collection_name
         
-        # Initialize embeddings (using ada-002 for consistency with pre-built embeddings)
-        self.embeddings = OpenAIEmbeddings(
-            model="text-embedding-ada-002"
-        )
+        # Initialize embeddings as None - will be created when needed for queries
+        self.embeddings = None
         
         # Initialize ChromaDB with in-memory client (no SQLite issues)
         self.chroma_client = chromadb.Client()  # In-memory client
@@ -431,7 +429,7 @@ class AdvancedVectorStore:
             
             return True
                 
-        except Exception as e:
+            except Exception as e:
             print(f"❌ Error loading pre-built embeddings: {e}")
             return False
 
@@ -447,11 +445,18 @@ class AdvancedVectorStore:
         print("❌ Pre-built embeddings not available. Please ensure railway_embeddings_data/embeddings_data.json exists.")
         print("🔧 Run build_raw_embeddings.py to generate embeddings first.")
     
+    def _get_embeddings(self):
+        """Lazy initialization of embeddings only when needed"""
+        if self.embeddings is None:
+            self.embeddings = OpenAIEmbeddings(model="text-embedding-ada-002")
+        return self.embeddings
+    
     def hybrid_search(self, query: str, top_k: int = 20, semantic_weight: float = 0.7) -> List[Dict]:
         """Advanced hybrid search combining semantic and keyword matching"""
         
-        # 1. Semantic search using embeddings
-        query_embedding = self.embeddings.embed_query(query)
+        # 1. Semantic search using embeddings (lazy init)
+        embeddings = self._get_embeddings()
+        query_embedding = embeddings.embed_query(query)
         
         semantic_results = self.collection.query(
             query_embeddings=[query_embedding],
