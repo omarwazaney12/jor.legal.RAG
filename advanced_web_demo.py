@@ -426,10 +426,30 @@ def initialize_system():
             # Still initialize the system for web interface
             return True
     except Exception as e:
-        print(f"⚠️ System initialization warning: {e}")
+        print(f"❌ System initialization error: {e}")
+        print(f"📍 Error details: {str(e)}")
+        import traceback
+        traceback.print_exc()
         print("🔧 System will start in limited mode - upload ChromaDB data to enable full functionality")
-        # Initialize a minimal system
-        legal_system = None
+        # Keep the system object even if documents don't load - web interface should still work
+        if legal_system is None:
+            print("🔧 Creating minimal system for web interface...")
+            try:
+                # Create a minimal system without document loading
+                legal_system = type('MinimalLegalSystem', (), {
+                    'query': lambda self, query, history=None: type('QueryResult', (), {
+                        'answer': 'النظام في وضع محدود حالياً. يرجى تحميل الوثائق القانونية لتفعيل جميع الميزات.',
+                        'sources': [],
+                        'confidence': 0.0,
+                        'reasoning_steps': [],
+                        'citations': [],
+                        'query_type': 'limited',
+                        'processing_time': 0.0
+                    })(),
+                    'get_system_stats': lambda self: {'status': 'Limited mode - documents not loaded'}
+                })()
+            except:
+                pass
         return True
 
 def get_or_create_session():
