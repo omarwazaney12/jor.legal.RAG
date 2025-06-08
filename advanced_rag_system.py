@@ -862,9 +862,14 @@ class LegalReasoningEngine:
         return self._generate_structured_answer(query, docs, reasoning_steps, "general", history)
     
     def _generate_structured_answer(self, query: str, docs: List[Dict], reasoning_steps: List[str], answer_type: str, conversation_history: List[str] = None) -> QueryResult:
-        """Generate structured legal answer using OpenAI"""
-        from openai import OpenAI
-        client = OpenAI()
+        """Generate structured legal answer using direct OpenAI API"""
+        import os
+        import requests
+        import json
+        
+        # Direct HTTP client to avoid Railway interference
+        api_key = os.getenv('OPENAI_API_KEY')
+        openai_base_url = 'https://api.openai.com/v1/chat/completions'
         
         # Detect query language
         detected_language = self.detect_language(query)
@@ -1083,17 +1088,34 @@ Answer:"""
 
 الإجابة:"""
         
-        # Generate answer
+        # Generate answer using direct HTTP API
         try:
-            response = client.chat.completions.create(
-                model="gpt-4o",
-                messages=[{"role": "user", "content": prompt}],
-                temperature=0.1,
-                max_tokens=4000  # Increased for more comprehensive responses
+            headers = {
+                'Authorization': f"Bearer {api_key}",
+                'Content-Type': 'application/json'
+            }
+            
+            data = {
+                'model': 'gpt-4o',
+                'messages': [{"role": "user", "content": prompt}],
+                'temperature': 0.1,
+                'max_tokens': 4000
+            }
+            
+            response = requests.post(
+                openai_base_url,
+                headers=headers,
+                json=data,
+                timeout=60
             )
             
-            answer = response.choices[0].message.content
-            confidence = 0.85  # High confidence with advanced system
+            if response.status_code == 200:
+                result = response.json()
+                answer = result['choices'][0]['message']['content']
+                confidence = 0.85  # High confidence with advanced system
+            else:
+                print(f"⚠️ OpenAI API error: {response.status_code} - {response.text}")
+                raise Exception(f"API Error: {response.status_code}")
             
         except Exception as e:
             if detected_language == 'english':
