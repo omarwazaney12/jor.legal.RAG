@@ -19,7 +19,6 @@ import pickle
 # Core libraries
 import numpy as np
 from langchain.text_splitter import RecursiveCharacterTextSplitter
-from langchain_openai import OpenAIEmbeddings
 from langchain.schema import Document
 import chromadb
 from chromadb.config import Settings
