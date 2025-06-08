@@ -370,9 +370,31 @@ class AdvancedVectorStore:
         """Load pre-built embeddings from JSON file"""
         print("📖 Loading pre-built embeddings...")
         
-        embeddings_file = Path("./railway_embeddings_data/embeddings_data.json")
-        if not embeddings_file.exists():
-            print(f"❌ Pre-built embeddings not found: {embeddings_file}")
+        # Try multiple possible paths for the embeddings file
+        possible_paths = [
+            Path("railway_embeddings_data/embeddings_data.json"),
+            Path("./railway_embeddings_data/embeddings_data.json"),
+            Path("/app/railway_embeddings_data/embeddings_data.json"),
+            Path("embeddings_data.json")
+        ]
+        
+        embeddings_file = None
+        for path in possible_paths:
+            print(f"🔍 Checking path: {path}")
+            if path.exists():
+                embeddings_file = path
+                print(f"✅ Found embeddings at: {path}")
+                break
+        
+        if not embeddings_file:
+            print("❌ Pre-built embeddings not found in any of these locations:")
+            for path in possible_paths:
+                print(f"   - {path}")
+            print("📁 Current working directory contents:")
+            import os
+            print(f"   Working dir: {os.getcwd()}")
+            for item in os.listdir("."):
+                print(f"   - {item}")
             return False
         
         try:
