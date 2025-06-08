@@ -1,14 +1,17 @@
 [variables]
 NIXPACKS_PYTHON_VERSION = "3.9"
 
+[providers]
+python = "3.9"
+
 [phases.setup]
-nixPkgs = ["python39", "pip"]
+nixPkgs = ["python39", "python39Packages.pip", "bash"]
 
 [phases.install]
-cmds = ["pip install -r requirements.txt"]
+cmds = ["pip install --no-cache-dir -r requirements.txt"]
 
 [phases.build]
-cmds = ["echo 'Build complete'"]
+cmds = ["chmod +x start.sh"]
 
 [start]
-cmd = "bash start.sh" 
+cmd = "./start.sh" 
