@@ -1,6 +1,6 @@
 build:
   dockerfile: false
 deploy:
-  startCommand: python3 main.py
+  startCommand: bash start.sh
   restartPolicyType: on-failure
   restartPolicyMaxRetries: 10 
