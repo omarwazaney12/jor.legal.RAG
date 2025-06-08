@@ -276,7 +276,7 @@ class AdvancedVectorStore:
         self.collection_name = collection_name
         
         # Initialize embeddings with timeout (using ada-002 for consistency with pre-built embeddings)
-            self.embeddings = OpenAIEmbeddings(
+        self.embeddings = OpenAIEmbeddings(
             model="text-embedding-ada-002",
             request_timeout=120,  # 2 minute timeout
             max_retries=3
@@ -411,7 +411,7 @@ class AdvancedVectorStore:
             
             return True
                 
-            except Exception as e:
+        except Exception as e:
             print(f"❌ Error loading pre-built embeddings: {e}")
             return False
 
