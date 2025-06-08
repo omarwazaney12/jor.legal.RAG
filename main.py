@@ -5,7 +5,7 @@ Advanced Legal RAG System for Jordanian Laws
 """
 
 import os
-from advanced_web_demo import app
+from advanced_web_demo import app, initialize_system
 
 if __name__ == '__main__':
     # Get port from Railway environment
@@ -13,6 +13,11 @@ if __name__ == '__main__':
     
     print("🚀 Starting Jordan Legal Assistant on Railway...")
     print(f"🌐 Server starting on port {port}")
+    
+    # Initialize the legal system BEFORE starting the server
+    print("🔧 Initializing Legal RAG System...")
+    initialize_system()
+    print("✅ System initialization complete!")
     
     # Run the Flask app
     app.run(

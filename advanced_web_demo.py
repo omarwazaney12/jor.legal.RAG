@@ -411,9 +411,29 @@ def initialize_system():
     global legal_system
     
     print("🚀 Initializing Advanced Legal RAG System...")
+    print(f"📁 Current working directory: {os.getcwd()}")
+    
+    # Check if embeddings file exists
+    from pathlib import Path
+    embeddings_paths = [
+        Path("railway_embeddings_data/embeddings_data.json"),
+        Path("./railway_embeddings_data/embeddings_data.json"),
+        Path("/app/railway_embeddings_data/embeddings_data.json"),
+        Path("embeddings_data.json")
+    ]
+    
+    print("🔍 Checking for embeddings file...")
+    for path in embeddings_paths:
+        exists = path.exists()
+        print(f"   {path}: {'✅ Found' if exists else '❌ Not found'}")
+        if exists:
+            print(f"   File size: {path.stat().st_size:,} bytes")
+    
     try:
+        print("🤖 Creating AdvancedLegalRAGSystem...")
         legal_system = AdvancedLegalRAGSystem()
         
+        print("📚 Loading documents...")
         # Load all documents
         num_docs = legal_system.load_documents()
         
@@ -1934,6 +1954,9 @@ def clear_conversation_history():
         
     except Exception as e:
         return jsonify({'success': False, 'error': str(e)})
+
+# Make initialize_system available for import
+__all__ = ['app', 'initialize_system']
 
 if __name__ == '__main__':
     print("🚀 Starting Advanced Legal RAG Web Demo...")
