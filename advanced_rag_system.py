@@ -447,22 +447,51 @@ class AdvancedVectorStore:
     def _get_embeddings(self):
         """Lazy initialization of embeddings only when needed"""
         if self.embeddings is None:
-            # Use raw OpenAI client instead of LangChain wrapper to avoid Railway proxies issue
-            import openai
-            self.embeddings = openai  # Store the module for direct API calls
+            # Use completely isolated OpenAI client to avoid Railway interference
+            import os
+            import json
+            import requests
+            
+            # Store HTTP client for direct API calls bypassing openai module
+            self.embeddings = {
+                'api_key': os.getenv('OPENAI_API_KEY'),
+                'base_url': 'https://api.openai.com/v1/embeddings'
+            }
         return self.embeddings
     
     def hybrid_search(self, query: str, top_k: int = 20, semantic_weight: float = 0.7) -> List[Dict]:
         """Advanced hybrid search combining semantic and keyword matching"""
         
-        # 1. Semantic search using embeddings (lazy init - raw OpenAI API)
-        openai_client = self._get_embeddings()
+        # 1. Semantic search using embeddings (direct HTTP API to avoid Railway issues)
+        openai_config = self._get_embeddings()
         try:
-            response = openai_client.embeddings.create(
-                model="text-embedding-ada-002",
-                input=query
+            import requests
+            import json
+            
+            headers = {
+                'Authorization': f"Bearer {openai_config['api_key']}",
+                'Content-Type': 'application/json'
+            }
+            
+            data = {
+                'model': 'text-embedding-ada-002',
+                'input': query
+            }
+            
+            response = requests.post(
+                openai_config['base_url'],
+                headers=headers,
+                json=data,
+                timeout=30
             )
-            query_embedding = response.data[0].embedding
+            
+            if response.status_code == 200:
+                result = response.json()
+                query_embedding = result['data'][0]['embedding']
+            else:
+                print(f"⚠️ OpenAI API error: {response.status_code} - {response.text}")
+                return []
+                
         except Exception as e:
             print(f"⚠️ Embedding generation failed: {e}")
             # Fallback: return empty results if embeddings fail
