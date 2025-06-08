@@ -275,68 +275,22 @@ class AdvancedVectorStore:
     def __init__(self, collection_name: str = "jordanian_legal_docs"):
         self.collection_name = collection_name
         
-        # Initialize embeddings with timeout - compatible with older OpenAI versions
-        try:
-            self.embeddings = OpenAIEmbeddings(
-                model="text-embedding-3-large"
-            )
-            print("✅ Using OpenAI embeddings (text-embedding-3-large)")
-        except Exception as e:
-            print(f"⚠️  Primary embedding model failed: {e}")
-            try:
-                print("🔄 Trying fallback model...")
-                self.embeddings = OpenAIEmbeddings(
-                    model="text-embedding-ada-002"
-                )
-                print("✅ Using OpenAI embeddings (text-embedding-ada-002)")
-            except Exception as e2:
-                print(f"⚠️  Fallback model also failed: {e2}")
-                try:
-                    print("🔄 Trying basic OpenAI embeddings...")
-                    self.embeddings = OpenAIEmbeddings()
-                    print("✅ Using basic OpenAI embeddings")
-                except Exception as e3:
-                    print(f"⚠️  All langchain embeddings failed: {e3}")
-                    print("🔄 Using custom OpenAI embeddings as final fallback...")
-                    # Import and use our custom embeddings
-                    from custom_openai_embeddings import CustomOpenAIEmbeddings
-                    self.embeddings = CustomOpenAIEmbeddings(model="text-embedding-ada-002")
-                    print("✅ Using custom OpenAI embeddings")
-        
-        # Initialize ChromaDB - use persistent storage path on Render
-        chroma_path = os.getenv('CHROMA_DB_PATH', './chroma_db')
-        self.chroma_client = chromadb.PersistentClient(
-            path=chroma_path,
-            settings=Settings(allow_reset=True)
+        # Initialize embeddings with timeout (using ada-002 for consistency with pre-built embeddings)
+        self.embeddings = OpenAIEmbeddings(
+            model="text-embedding-ada-002",
+            request_timeout=120,  # 2 minute timeout
+            max_retries=3
         )
         
-        # Progress tracking
+        # Initialize ChromaDB with in-memory client (no SQLite issues)
+        self.chroma_client = chromadb.Client()  # In-memory client
+        
+        # Progress tracking (for backward compatibility)
         self.progress_file = Path("embedding_progress.pkl")
         self.error_log_file = Path("embedding_errors.log")
         
-        # Create or get collection with schema compatibility handling
-        try:
-            # First try to list collections to test schema compatibility
-            collections = self.chroma_client.list_collections()
-            # If we can list collections, try to get the specific one
-            self.collection = self.chroma_client.get_collection(collection_name)
-            print(f"✅ Loaded existing collection: {collection_name}")
-        except Exception as e:
-            print(f"⚠️ Collection access failed (likely schema issue): {e}")
-            print("🔄 Creating fresh collection with compatible schema...")
-            try:
-                # Reset the database to fix schema issues
-                self.chroma_client.reset()
-                print("✅ Database reset successful")
-            except Exception as reset_error:
-                print(f"⚠️ Reset failed: {reset_error}")
-            
-            # Create fresh collection
-            self.collection = self.chroma_client.create_collection(
-                name=collection_name,
-                metadata={"description": "Jordanian Legal Documents - Schema Compatible"}
-            )
-            print(f"✅ Created fresh collection: {collection_name}")
+        # Initialize collection as None - will be loaded from pre-built data
+        self.collection = None
         
         # TF-IDF for keyword search
         self.tfidf_vectorizer = TfidfVectorizer(
@@ -412,260 +366,66 @@ class AdvancedVectorStore:
         )
         print(f"✅ Created fresh collection: {self.collection_name}")
 
-    def add_documents(self, documents: List[LegalDocument], chunk_size: int = 500, force_rebuild: bool = False):
-        """Add documents with intelligent chunking"""
-        print(f"📄 Processing {len(documents)} documents for vector storage...")
+    def load_prebuilt_embeddings(self):
+        """Load pre-built embeddings from JSON file"""
+        print("📖 Loading pre-built embeddings...")
         
-        # Check if collection has data
+        embeddings_file = Path("./railway_embeddings_data/embeddings_data.json")
+        if not embeddings_file.exists():
+            print(f"❌ Pre-built embeddings not found: {embeddings_file}")
+            return False
+        
         try:
-            existing_count = self.collection.count()
-            print(f"📊 Found existing collection with {existing_count} items")
+            with open(embeddings_file, 'r', encoding='utf-8') as f:
+                data = json.load(f)
             
-            if existing_count > 0 and not force_rebuild:
-                print("✅ Using existing collection. Building TF-IDF index for hybrid search...")
-                # Build TF-IDF for hybrid search
-                splitter = RecursiveCharacterTextSplitter(
-                    chunk_size=chunk_size,
-                    chunk_overlap=100,
-                    separators=[
-                        "\n\n=== Page", "\nالمادة", "\nالبند", "\nالفقرة",
-                        "\n\n", "\n", ". ", " "
-                    ],
-                    keep_separator=True
-                )
-                
-                all_chunks = []
-                for doc in documents:
-                    chunks = splitter.split_text(doc.content)
-                    all_chunks.extend(chunks)
-                    for article in doc.articles:
-                        all_chunks.append(article['full_text'])
-                
-                if all_chunks:
-                    self.tfidf_matrix = self.tfidf_vectorizer.fit_transform(all_chunks)
-                    self.doc_chunks = all_chunks
-                    print(f"✅ TF-IDF index ready with {len(all_chunks)} chunks")
-                return
-            else:
-                if force_rebuild:
-                    print("🔄 Force rebuild requested. Clearing existing collection...")
-                self.clear_collection()
+            print(f"📊 Loaded {len(data['documents'])} pre-built documents")
+            
+            # Create collection
+            self.collection = self.chroma_client.create_collection(
+                name=self.collection_name,
+                metadata={
+                    "description": "Jordanian legal documents for RAG system",
+                    "model": data.get('model', 'text-embedding-ada-002'),
+                    "total_docs": data.get('total_docs', len(data['documents']))
+                }
+            )
+            
+            # Add all data to ChromaDB
+            print("🔄 Adding documents to ChromaDB...")
+            self.collection.add(
+                documents=data['documents'],
+                metadatas=data['metadatas'],
+                embeddings=data['embeddings'],
+                ids=data['ids']
+            )
+            
+            # Build TF-IDF index for hybrid search
+            print("🔍 Building TF-IDF index for hybrid search...")
+            self.doc_chunks = data['documents']
+            self.tfidf_matrix = self.tfidf_vectorizer.fit_transform(self.doc_chunks)
+            
+            final_count = self.collection.count()
+            print(f"✅ Successfully loaded {final_count} documents into ChromaDB")
+            print(f"✅ TF-IDF index ready with {len(self.doc_chunks)} chunks")
+            
+            return True
+            
         except Exception as e:
-            print(f"ℹ️  No existing collection found: {e}")
-            # Create fresh collection if none exists
-            self.clear_collection()
+            print(f"❌ Error loading pre-built embeddings: {e}")
+            return False
+
+    def add_documents(self, documents: List[LegalDocument], chunk_size: int = 500, force_rebuild: bool = False):
+        """Load documents using pre-built embeddings"""
+        print(f"📄 Using pre-built embeddings for {len(documents)} documents...")
         
-        # Text splitter optimized for legal documents
-        splitter = RecursiveCharacterTextSplitter(
-            chunk_size=chunk_size,
-            chunk_overlap=100,  # Reduced from 200
-            separators=[
-                "\n\n=== Page",  # Page boundaries
-                "\nالمادة",      # Article boundaries
-                "\nالبند",       # Item boundaries
-                "\nالفقرة",      # Paragraph boundaries
-                "\n\n",         # Double newlines
-                "\n",           # Single newlines
-                ". ",           # Sentences
-                " "             # Words
-            ],
-            keep_separator=True
-        )
+        # Try to load pre-built embeddings first
+        if self.load_prebuilt_embeddings():
+            return
         
-        all_chunks = []
-        chunk_metadata = []
-        
-        for doc in documents:
-            # Create chunks for main content
-            chunks = splitter.split_text(doc.content)
-            
-            for i, chunk in enumerate(chunks):
-                chunk_id = f"{doc.id}_chunk_{i}"
-                
-                metadata = {
-                    'chunk_id': chunk_id,
-                    'doc_id': doc.id,
-                    'doc_title': doc.title,
-                    'doc_type': doc.doc_type,
-                    'category': doc.category,
-                    'chunk_index': i,
-                    'total_chunks': len(chunks),
-                    'law_number': doc.law_number,
-                    'year': doc.year,
-                    'source_file': doc.source_file
-                }
-                
-                all_chunks.append(chunk)
-                chunk_metadata.append(self.clean_metadata(metadata))
-            
-            # Add individual articles as separate chunks (higher precision)
-            for article_idx, article in enumerate(doc.articles):
-                # Create unique ID using both article number and index to avoid duplicates
-                chunk_id = f"{doc.id}_article_{article['number']}_{article_idx}"
-                
-                article_metadata = {
-                    'chunk_id': chunk_id,
-                    'doc_id': doc.id,
-                    'doc_title': doc.title,
-                    'doc_type': doc.doc_type,
-                    'category': doc.category,
-                    'chunk_type': 'article',
-                    'article_number': article.get('number'),
-                    'article_title': article.get('title'),
-                    'law_number': doc.law_number,
-                    'year': doc.year,
-                    'source_file': doc.source_file
-                }
-                
-                all_chunks.append(article['full_text'])
-                chunk_metadata.append(self.clean_metadata(article_metadata))
-        
-        print(f"📄 Created {len(all_chunks)} chunks total")
-        
-        # Final deduplication check by IDs
-        seen_ids = set()
-        unique_chunks = []
-        unique_metadata = []
-        
-        for chunk, metadata in zip(all_chunks, chunk_metadata):
-            chunk_id = metadata['chunk_id']
-            if chunk_id not in seen_ids:
-                seen_ids.add(chunk_id)
-                unique_chunks.append(chunk)
-                unique_metadata.append(metadata)
-        
-        all_chunks = unique_chunks
-        chunk_metadata = unique_metadata
-        
-        print(f"📄 After deduplication: {len(all_chunks)} unique chunks")
-        
-        # Generate embeddings with robust error handling
-        print("🔤 Generating embeddings with enhanced error handling...")
-        
-        # Check for previous progress
-        progress = self.load_progress()
-        if progress and progress['total_chunks'] == len(all_chunks):
-            print(f"   📋 Found previous progress: {progress['completed_chunks']}/{progress['total_chunks']} chunks")
-            embeddings = progress['embeddings']
-            start_index = progress['completed_chunks']
-        else:
-            print("   🆕 Starting fresh embedding generation")
-            embeddings = []
-            start_index = 0
-            # Clear progress file
-            if self.progress_file.exists():
-                self.progress_file.unlink()
-        
-        batch_size = 1  # Process 1 chunk at a time for better error handling
-        total_chunks = len(all_chunks)
-        failed_chunks = []
-        
-        # Process remaining chunks
-        for i in range(start_index, total_chunks, batch_size):
-            batch_end = min(i + batch_size, total_chunks)
-            batch_chunks = all_chunks[i:batch_end]
-            current_position = i + 1
-            
-            # Progress indicator
-            progress_percent = (i / total_chunks) * 100
-            print(f"   🔄 Processing chunk {current_position}/{total_chunks} ({progress_percent:.1f}%)")
-            
-            try:
-                # Add small delay to avoid hitting rate limits too hard
-                if i > 0:
-                    time.sleep(0.5)  # 500ms delay between requests
-                
-                # Generate embeddings with retry logic
-                batch_embeddings = self.generate_embeddings_batch(batch_chunks)
-                embeddings.extend(batch_embeddings)
-                
-                # Save progress every 50 chunks
-                if (i + 1) % 50 == 0 or i + batch_size >= total_chunks:
-                    self.save_progress(i + batch_size, total_chunks, embeddings, chunk_metadata[:len(embeddings)])
-                
-            except Exception as e:
-                error_msg = f"Failed to process chunk {current_position}: {str(e)}"
-                print(f"   ❌ {error_msg}")
-                self.log_error(error_msg, current_position)
-                failed_chunks.append(i)
-                
-                # Add None placeholder to maintain index alignment
-                embeddings.append(None)
-                continue
-        
-        # Filter out failed embeddings and their metadata
-        valid_embeddings = []
-        valid_chunks = []
-        valid_metadata = []
-        
-        for i, embedding in enumerate(embeddings):
-            if embedding is not None:
-                valid_embeddings.append(embedding)
-                valid_chunks.append(all_chunks[i])
-                valid_metadata.append(chunk_metadata[i])
-        
-        embeddings = valid_embeddings
-        all_chunks = valid_chunks
-        chunk_metadata = valid_metadata
-        
-        print(f"✅ Generated {len(embeddings)} successful embeddings")
-        if failed_chunks:
-            print(f"⚠️  {len(failed_chunks)} chunks failed - check {self.error_log_file} for details")
-        
-        # Clean up progress file on success
-        if self.progress_file.exists():
-            self.progress_file.unlink()
-        
-        # Store in ChromaDB in batches with error handling
-        print("💾 Storing embeddings in vector database...")
-        storage_batch_size = 100  # Larger batches for storage
-        storage_failures = 0
-        
-        for i in range(0, len(all_chunks), storage_batch_size):
-            batch_end = min(i + storage_batch_size, len(all_chunks))
-            batch_num = (i // storage_batch_size) + 1
-            total_storage_batches = (len(all_chunks) + storage_batch_size - 1) // storage_batch_size
-            
-            print(f"   💾 Storing batch {batch_num}/{total_storage_batches}...")
-            
-            try:
-                self.collection.add(
-                    documents=all_chunks[i:batch_end],
-                    embeddings=embeddings[i:batch_end],
-                    metadatas=chunk_metadata[i:batch_end],
-                    ids=[meta['chunk_id'] for meta in chunk_metadata[i:batch_end]]
-                )
-            except Exception as e:
-                storage_failures += 1
-                error_msg = f"Failed to store batch {batch_num}: {str(e)}"
-                print(f"   ❌ {error_msg}")
-                self.log_error(error_msg)
-                
-                # Try storing items individually in this batch
-                print(f"   🔄 Attempting individual storage for batch {batch_num}...")
-                for j in range(i, batch_end):
-                    try:
-                        self.collection.add(
-                            documents=[all_chunks[j]],
-                            embeddings=[embeddings[j]],
-                            metadatas=[chunk_metadata[j]],
-                            ids=[chunk_metadata[j]['chunk_id']]
-                        )
-                    except Exception as individual_error:
-                        self.log_error(f"Failed to store individual chunk {j}: {individual_error}")
-                        continue
-        
-        if storage_failures == 0:
-            print(f"✅ All embeddings stored successfully in ChromaDB")
-        else:
-            print(f"⚠️  {storage_failures} storage batches had issues - check error log")
-        
-        # Build TF-IDF matrix for keyword search
-        print("🔍 Building TF-IDF index...")
-        self.tfidf_matrix = self.tfidf_vectorizer.fit_transform(all_chunks)
-        self.doc_chunks = all_chunks
-        
-        print(f"✅ Vector store ready with {len(all_chunks)} indexed chunks")
+        # Fallback: If pre-built embeddings not available, show error
+        print("❌ Pre-built embeddings not available. Please ensure railway_embeddings_data/embeddings_data.json exists.")
+        print("🔧 Run build_raw_embeddings.py to generate embeddings first.")
     
     def hybrid_search(self, query: str, top_k: int = 20, semantic_weight: float = 0.7) -> List[Dict]:
         """Advanced hybrid search combining semantic and keyword matching"""
@@ -912,7 +672,7 @@ class LegalReasoningEngine:
         
         return result
     
-    def _enhanced_retrieval(self, query: str, query_type: str, top_k: int = 15) -> List[Dict]:
+    def _enhanced_retrieval(self, query: str, query_type: str, top_k: int = 10) -> List[Dict]:
         """Enhanced retrieval strategy based on query type"""
         
         # Adjust search parameters based on query type
@@ -1301,68 +1061,35 @@ class AdvancedLegalRAGSystem:
         print("🚀 Advanced Legal RAG System initialized")
     
     def load_documents(self, force_rebuild: bool = False) -> int:
-        """Load and process all legal documents"""
-        print(f"📁 Loading documents from {self.documents_path}")
+        """Load documents using pre-built embeddings"""
+        print(f"📁 Loading documents using pre-built embeddings...")
         
-        if not self.documents_path.exists():
-            print(f"❌ Documents path not found: {self.documents_path}")
+        # Load pre-built embeddings directly
+        if self.vector_store.load_prebuilt_embeddings():
+            # Create placeholder documents for compatibility with existing code
+            # The actual documents are already loaded in the vector store
+            collection_count = self.vector_store.collection.count()
+            print(f"📚 Successfully loaded {collection_count} document chunks from pre-built embeddings")
+            
+            # Create a minimal document list for compatibility
+            self.documents = [LegalDocument(
+                id="prebuilt_docs",
+                title="Pre-built Legal Documents",
+                source_file="embeddings_data.json",
+                content="Loaded from pre-built embeddings",
+                doc_type="متنوعة",
+                category="عام",
+                law_number=None,
+                year=None,
+                articles=[],
+                metadata={"loaded_from": "pre-built embeddings"},
+                word_count=0
+            )]
+            
+            return collection_count
+        else:
+            print(f"❌ Could not load pre-built embeddings")
             return 0
-        
-        txt_files = list(self.documents_path.glob("*.txt"))
-        txt_files = [f for f in txt_files if f.name != "filename_mapping.txt"]
-        
-        print(f"📄 Found {len(txt_files)} legal documents")
-        
-        for txt_file in txt_files:
-            try:
-                with open(txt_file, 'r', encoding='utf-8') as f:
-                    content = f.read()
-                
-                if not content.strip():
-                    continue
-                
-                # Process document
-                title = txt_file.stem
-                doc_type, category = self.processor.categorize_document(title, content)
-                articles = self.processor.extract_articles(content)
-                metadata = self.processor.extract_legal_metadata(title, content)
-                
-                # Extract law number and year
-                law_number = metadata.get('law_number')
-                year = metadata.get('year')
-                
-                # Create deterministic document ID based on filename and content hash
-                content_hash = hashlib.md5(f"{txt_file.name}:{content[:1000]}".encode('utf-8')).hexdigest()
-                doc_id = f"{txt_file.stem}_{content_hash[:8]}"
-                
-                # Create LegalDocument object
-                doc = LegalDocument(
-                    id=doc_id,
-                    title=self.processor.clean_title(title),
-                    source_file=txt_file.name,
-                    content=content,
-                    doc_type=doc_type,
-                    category=category,
-                    law_number=law_number,
-                    year=year,
-                    articles=articles,
-                    metadata=metadata,
-                    word_count=len(content.split())
-                )
-                
-                self.documents.append(doc)
-                print(f"✅ Processed: {doc.title} ({doc.doc_type}, {len(articles)} articles)")
-                
-            except Exception as e:
-                print(f"❌ Error processing {txt_file.name}: {e}")
-        
-        print(f"📚 Total documents loaded: {len(self.documents)}")
-        
-        # Load into vector store with larger chunk size for more comprehensive context
-        if self.documents:
-            self.vector_store.add_documents(self.documents, chunk_size=800, force_rebuild=force_rebuild)
-        
-        return len(self.documents)
     
     def query(self, query: str, conversation_history: List[str] = None) -> QueryResult:
         """Process a legal query and return comprehensive result"""

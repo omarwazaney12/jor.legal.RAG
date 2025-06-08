@@ -1,123 +1,200 @@
 #!/usr/bin/env python3
 """
-Deployment version of Advanced Legal RAG - works with existing ChromaDB only
-This version doesn't require original documents, only the embedded database
+Render Deployment Script - Uses Pre-built ChromaDB Database
+This version loads a pre-built ChromaDB database instead of creating embeddings on Render
 """
 
 import os
+import sys
 from pathlib import Path
-from advanced_rag_system import AdvancedLegalRAGSystem
+from typing import Optional
+import chromadb
 
-class DeploymentRAGSystem(AdvancedLegalRAGSystem):
-    """RAG system optimized for deployment - works with existing embeddings only"""
+class DeploymentRAGSystem:
+    """Deployment version that loads pre-built ChromaDB database"""
     
-    def __init__(self, chroma_db_path: str = None):
-        # Use environment variable for Render persistent storage
-        if chroma_db_path is None:
-            chroma_db_path = os.getenv('CHROMA_DB_PATH', './chroma_db')
-        self.chroma_db_path = Path(chroma_db_path)
+    def __init__(self):
+        self.chroma_client = None
+        self.collection = None
+        self.is_ready = False
         
-        # Initialize without documents path
-        from advanced_rag_system import AdvancedLegalProcessor, AdvancedVectorStore, LegalReasoningEngine
-        
-        self.processor = AdvancedLegalProcessor()
-        self.vector_store = AdvancedVectorStore()
-        self.reasoning_engine = LegalReasoningEngine(self.vector_store)
-        self.documents = []  # Empty - we only use embeddings
-        
-        print("🚀 Deployment RAG System initialized (embeddings only)")
-    
-    def load_embeddings_only(self) -> bool:
-        """Load existing ChromaDB embeddings without processing documents"""
-        
-        if not self.chroma_db_path.exists():
-            print(f"❌ ChromaDB not found at: {self.chroma_db_path}")
-            return False
-        
+    def load_prebuilt_database(self) -> bool:
+        """Load the pre-built ChromaDB database created locally"""
         try:
-            # Check if collection has data
-            existing_count = self.vector_store.collection.count()
-            print(f"📊 Found existing ChromaDB with {existing_count} embedded chunks")
+            # Use Render's expected database path or local path for testing
+            chroma_path = os.getenv('CHROMA_DB_PATH', './chroma_db_render')
             
-            if existing_count > 0:
-                print("✅ Using existing embeddings - system ready!")
+            print(f"📂 Loading pre-built database from: {chroma_path}")
+            
+            # Check if database exists
+            if not Path(chroma_path).exists():
+                print(f"❌ Database not found at {chroma_path}")
+                print("💡 Make sure you've run build_embeddings_locally.py first")
+                return False
+            
+            # Initialize ChromaDB with modern 0.4.17 syntax
+            self.chroma_client = chromadb.PersistentClient(path=chroma_path)
+            
+            # Get the collection
+            collections = self.chroma_client.list_collections()
+            print(f"✅ Found {len(collections)} collections")
+            
+            if not collections:
+                print("❌ No collections found in database")
+                return False
+            
+            # Get the main collection
+            collection_name = "jordanian_legal_docs"
+            try:
+                self.collection = self.chroma_client.get_collection(collection_name)
+                doc_count = self.collection.count()
+                print(f"✅ Loaded collection '{collection_name}' with {doc_count} documents")
                 
-                # Try to get some sample chunks for TF-IDF (optional)
-                try:
-                    # Get a sample of documents for TF-IDF backup
-                    sample_results = self.vector_store.collection.query(
-                        query_texts=["قانون"],
-                        n_results=min(200, existing_count)
-                    )
-                    
-                    if sample_results and 'documents' in sample_results:
-                        # Build minimal TF-IDF index from available chunks
-                        from sklearn.feature_extraction.text import TfidfVectorizer
-                        
-                        self.vector_store.tfidf_vectorizer = TfidfVectorizer(
-                            max_features=5000,
-                            stop_words=None,
-                            ngram_range=(1, 2)
-                        )
-                        
-                        documents = sample_results['documents'][0]  # Flatten if nested
-                        self.vector_store.doc_chunks = documents
-                        self.vector_store.tfidf_matrix = self.vector_store.tfidf_vectorizer.fit_transform(documents)
-                        
-                        print(f"✅ Built TF-IDF index with {len(documents)} chunks")
-                    
-                except Exception as e:
-                    print(f"⚠️  Could not build TF-IDF index: {e}")
-                    print("   System will use semantic search only")
+                if doc_count == 0:
+                    print("⚠️  Collection is empty!")
+                    return False
                 
+                self.is_ready = True
                 return True
-            else:
-                print("❌ ChromaDB exists but contains no embeddings")
+                
+            except Exception as e:
+                print(f"❌ Could not access collection '{collection_name}': {e}")
                 return False
                 
         except Exception as e:
-            print(f"❌ Error loading ChromaDB: {e}")
+            print(f"❌ Failed to load pre-built database: {e}")
+            import traceback
+            traceback.print_exc()
             return False
     
-    def load_documents(self, force_rebuild: bool = False) -> int:
-        """Override to use embeddings only"""
-        success = self.load_embeddings_only()
-        return 1 if success else 0
-
-def initialize_deployment_system():
-    """Initialize system for deployment"""
-    print("🚀 Initializing Deployment Legal RAG System...")
+    def query(self, query_text: str, n_results: int = 5):
+        """Query the pre-built database"""
+        if not self.is_ready or not self.collection:
+            return {
+                'confidence': 0.0,
+                'answer': 'النظام غير متاح حالياً. يرجى المحاولة لاحقاً.',
+                'sources': [],
+                'error': 'Database not ready'
+            }
+        
+        try:
+            # Perform semantic search
+            results = self.collection.query(
+                query_texts=[query_text],
+                n_results=n_results,
+                include=['documents', 'metadatas', 'distances']
+            )
+            
+            if not results['documents'] or not results['documents'][0]:
+                return {
+                    'confidence': 0.0,
+                    'answer': 'لم يتم العثور على معلومات ذات صلة بالاستعلام.',
+                    'sources': []
+                }
+            
+            # Calculate confidence from distances
+            distances = results['distances'][0] if results['distances'] else [1.0] * len(results['documents'][0])
+            avg_distance = sum(distances) / len(distances)
+            confidence = max(0.0, 1.0 - avg_distance)  # Convert distance to confidence
+            
+            # Format sources
+            sources = []
+            documents = results['documents'][0]
+            metadatas = results['metadatas'][0] if results['metadatas'] else [{}] * len(documents)
+            
+            for i, (doc, metadata) in enumerate(zip(documents, metadatas)):
+                sources.append({
+                    'content': doc,
+                    'metadata': metadata,
+                    'relevance_score': 1.0 - distances[i] if i < len(distances) else 0.5
+                })
+            
+            # Create a simple answer from the most relevant documents
+            top_docs = documents[:3]  # Use top 3 most relevant
+            answer = f"بناءً على الوثائق القانونية المتاحة:\n\n{' '.join(top_docs[:2])}"
+            
+            return {
+                'confidence': confidence,
+                'answer': answer,
+                'sources': sources
+            }
+            
+        except Exception as e:
+            print(f"❌ Query failed: {e}")
+            return {
+                'confidence': 0.0,
+                'answer': f'حدث خطأ أثناء البحث: {str(e)}',
+                'sources': [],
+                'error': str(e)
+            }
     
-    # Check if ChromaDB exists - use environment variable for Render
-    chroma_path_str = os.getenv('CHROMA_DB_PATH', './chroma_db')
-    chroma_path = Path(chroma_path_str)
-    if not chroma_path.exists():
-        print(f"❌ ChromaDB not found at {chroma_path}. Please ensure embeddings are available.")
-        return None
+    def get_system_stats(self):
+        """Get system statistics"""
+        if not self.is_ready:
+            return {
+                'status': 'not_ready',
+                'database_path': os.getenv('CHROMA_DB_PATH', './chroma_db_render'),
+                'collections': 0,
+                'total_documents': 0
+            }
+        
+        try:
+            collections = self.chroma_client.list_collections()
+            total_docs = sum(self.chroma_client.get_collection(c.name).count() for c in collections)
+            
+            return {
+                'status': 'ready',
+                'database_path': os.getenv('CHROMA_DB_PATH', './chroma_db_render'),
+                'collections': len(collections),
+                'total_documents': total_docs,
+                'backend': 'duckdb+parquet'
+            }
+            
+        except Exception as e:
+            return {
+                'status': 'error',
+                'error': str(e),
+                'database_path': os.getenv('CHROMA_DB_PATH', './chroma_db_render')
+            }
+
+def test_deployment_system():
+    """Test the deployment system"""
+    print("🧪 Testing Deployment RAG System")
+    print("=" * 40)
     
     system = DeploymentRAGSystem()
     
-    # Load embeddings
-    num_loaded = system.load_documents()
-    
-    if num_loaded > 0:
-        print("✅ Deployment system ready!")
-        return system
-    else:
-        print("❌ Failed to load embeddings")
-        return None
-
-if __name__ == "__main__":
-    system = initialize_deployment_system()
-    
-    if system:
-        print("\n🎉 Deployment RAG System ready!")
-        print("   - Using existing ChromaDB embeddings")
-        print("   - No original documents required")
-        print("   - Ready for production deployment")
+    # Load database
+    if system.load_prebuilt_database():
+        print("✅ Database loaded successfully")
         
         # Test query
-        test_result = system.query("ما هي شروط تأسيس الشركات؟")
-        print(f"\n📝 Test query confidence: {test_result.confidence}")
+        test_query = "ما هي شروط تأسيس الشركات؟"
+        print(f"\n🔍 Testing query: {test_query}")
+        
+        result = system.query(test_query)
+        print(f"✅ Query result:")
+        print(f"   Confidence: {result['confidence']:.2f}")
+        print(f"   Sources: {len(result['sources'])}")
+        print(f"   Answer preview: {result['answer'][:100]}...")
+        
+        # Show stats
+        stats = system.get_system_stats()
+        print(f"\n📊 System Stats:")
+        print(f"   Status: {stats['status']}")
+        print(f"   Collections: {stats['collections']}")
+        print(f"   Total documents: {stats['total_documents']}")
+        print(f"   Backend: {stats.get('backend', 'unknown')}")
+        
+        return True
     else:
-        print("❌ System initialization failed") 
+        print("❌ Failed to load database")
+        return False
+
+if __name__ == "__main__":
+    # Test the system
+    if test_deployment_system():
+        print("\n🎉 Deployment system ready!")
+    else:
+        print("\n❌ Deployment system failed!")
+        sys.exit(1) 

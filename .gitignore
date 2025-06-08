@@ -130,5 +130,10 @@ legal_rag_fresh/
 node_modules/
 *.txt.processed
 *.backup
+# Local development database (ignored)
 chroma_db/
+
+# Pre-built database for Render (COMMIT THIS)
+# chroma_db_render/ - This should be committed for deployment
+
 chroma_backup_*.zip 

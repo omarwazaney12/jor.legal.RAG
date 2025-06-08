@@ -1,6 +1,6 @@
 #!/bin/bash
 # Build script for Render deployment
-# This script handles the directory structure issue
+# This script handles the directory structure issue and ChromaDB initialization
 
 echo "🔧 Setting up build environment..."
 
@@ -19,5 +19,9 @@ fi
 # Install dependencies
 echo "📦 Installing dependencies..."
 cd cbj-scraper && pip install -r requirements.txt
+
+# Initialize ChromaDB with Render-compatible settings
+echo "🗄️  Initializing ChromaDB for Render..."
+cd .. && python3 render_chromadb_init.py
 
 echo "✅ Build completed successfully!" 
