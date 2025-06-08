@@ -1,0 +1,2 @@
+This file triggers a new deployment with fixed dependencies.
+Timestamp: Jun 8, 2025 - Dependency conflicts resolved! 
