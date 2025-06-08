@@ -429,7 +429,7 @@ class AdvancedVectorStore:
             
             return True
                 
-        except Exception as e:
+            except Exception as e:
             print(f"❌ Error loading pre-built embeddings: {e}")
             return False
 
@@ -448,15 +448,26 @@ class AdvancedVectorStore:
     def _get_embeddings(self):
         """Lazy initialization of embeddings only when needed"""
         if self.embeddings is None:
-            self.embeddings = OpenAIEmbeddings(model="text-embedding-ada-002")
+            # Use raw OpenAI client instead of LangChain wrapper to avoid Railway proxies issue
+            import openai
+            self.embeddings = openai  # Store the module for direct API calls
         return self.embeddings
     
     def hybrid_search(self, query: str, top_k: int = 20, semantic_weight: float = 0.7) -> List[Dict]:
         """Advanced hybrid search combining semantic and keyword matching"""
         
-        # 1. Semantic search using embeddings (lazy init)
-        embeddings = self._get_embeddings()
-        query_embedding = embeddings.embed_query(query)
+        # 1. Semantic search using embeddings (lazy init - raw OpenAI API)
+        openai_client = self._get_embeddings()
+        try:
+            response = openai_client.embeddings.create(
+                model="text-embedding-ada-002",
+                input=query
+            )
+            query_embedding = response.data[0].embedding
+        except Exception as e:
+            print(f"⚠️ Embedding generation failed: {e}")
+            # Fallback: return empty results if embeddings fail
+            return []
         
         semantic_results = self.collection.query(
             query_embeddings=[query_embedding],
