@@ -429,7 +429,7 @@ class AdvancedVectorStore:
             
             return True
                 
-            except Exception as e:
+        except Exception as e:
             print(f"❌ Error loading pre-built embeddings: {e}")
             return False
 
