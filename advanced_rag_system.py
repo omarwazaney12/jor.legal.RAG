@@ -862,140 +862,150 @@ class LegalReasoningEngine:
         return self._generate_structured_answer(query, docs, reasoning_steps, "general", history)
     
     def _generate_structured_answer(self, query: str, docs: List[Dict], reasoning_steps: List[str], answer_type: str, conversation_history: List[str] = None) -> QueryResult:
-        """Generate structured legal answer using direct OpenAI API"""
-        import os
-        import requests
-        import json
+        """Generate structured answer using advanced prompting"""
         
-        # Direct HTTP client to avoid Railway interference
-        api_key = os.getenv('OPENAI_API_KEY')
-        openai_base_url = 'https://api.openai.com/v1/chat/completions'
+        # Better document filtering for relevance
+        filtered_docs = []
+        query_keywords = set(query.lower().split())
         
-        # Detect query language
-        detected_language = self.detect_language(query)
+        for doc in docs:
+            doc_text = doc.get('content', '').lower()
+            doc_title = doc.get('title', '').lower()
+            
+            # Calculate relevance score based on keyword overlap and content quality
+            title_matches = sum(1 for keyword in query_keywords if keyword in doc_title)
+            content_matches = sum(1 for keyword in query_keywords if keyword in doc_text)
+            
+            # Prioritize documents with title matches and substantial content
+            relevance_score = (title_matches * 3) + content_matches
+            doc_length = len(doc_text)
+            
+            # Filter out clearly irrelevant documents (like factory regulations for business registration)
+            irrelevant_patterns = ['مصانع', 'مخابز', 'معارض'] if any(word in query.lower() for word in ['شركة', 'تسجيل', 'business', 'registration']) else []
+            
+            is_irrelevant = any(pattern in doc_text for pattern in irrelevant_patterns)
+            
+            if relevance_score > 0 and doc_length > 100 and not is_irrelevant:
+                filtered_docs.append({**doc, 'relevance_score': relevance_score})
         
-        # Prepare conversation context if available - increased for more comprehensive context
-        conversation_context = ""
-        if conversation_history and len(conversation_history) > 0:
-            conversation_context = f"\n\nسياق المحادثة السابقة:\n" + "\n".join(conversation_history[-8:])  # Last 8 messages for more comprehensive context
+        # Sort by relevance and take top documents
+        filtered_docs.sort(key=lambda x: x.get('relevance_score', 0), reverse=True)
+        top_docs = filtered_docs[:8]  # Focus on most relevant documents
         
-        # Check if this is a follow-up question
-        follow_up_keywords = ['هذا', 'ذلك', 'المذكور', 'السابق', 'النقطة', 'البند', 'الخطوة', 'وضح', 'أكثر', 'تفصيل']
-        is_follow_up = any(keyword in query.lower() for keyword in follow_up_keywords)
-        
-        # Prepare context from retrieved documents
-        context_parts = []
+        # Build context from filtered documents
+        context = ""
         sources = []
         citations = []
         
-        for i, doc in enumerate(docs[:10], 1):  # Use top 10 documents for comprehensive coverage
-            metadata = doc['metadata']
-            content = doc['content'][:3000]  # Increased content length for more comprehensive context
+        for i, doc in enumerate(top_docs):
+            content = doc.get('content', '')
+            title = doc.get('title', f'Document {i+1}')
             
-            # Build proper legal document reference instead of generic "الوثيقة 1"
-            if metadata.get('law_number') and metadata.get('year'):
-                doc_reference = f"{metadata.get('doc_type', 'قانون')} رقم {metadata['law_number']} لسنة {metadata['year']}"
-            else:
-                doc_reference = f"{metadata.get('doc_type', 'قانون')}: {metadata.get('doc_title', 'غير محدد')}"
+            # Truncate very long documents but keep key information
+            if len(content) > 2000:
+                content = content[:2000] + "..."
             
-            # Format context with proper legal reference
-            context_parts.append(f"""المرجع القانوني: {doc_reference}
-النوع: {metadata.get('doc_type', 'غير محدد')}
-المحتوى: {content}""")
+            context += f"\n=== {title} ===\n{content}\n"
             
             sources.append({
-                'title': metadata.get('doc_title', 'غير محدد'),
-                'type': metadata.get('doc_type', 'غير محدد'),
-                'law_number': metadata.get('law_number'),
-                'year': metadata.get('year'),
-                'relevance_score': doc.get('final_score', 0)
+                'title': title,
+                'confidence': min(0.95, 0.7 + (doc.get('relevance_score', 0) * 0.05)),
+                'snippet': content[:300] + "..." if len(content) > 300 else content
             })
             
-            if metadata.get('law_number') and metadata.get('year'):
-                citations.append(f"{metadata['doc_type']} رقم {metadata['law_number']} لسنة {metadata['year']}")
+            citations.append(f"المرجع: {title}")
         
-        context = "\n\n" + "="*50 + "\n\n".join(context_parts)
+        # Conversation context
+        conversation_context = ""
+        if conversation_history:
+            conversation_context = f"\n\nContext from previous conversation:\n{' '.join(conversation_history[-3:])}\n"
         
-        # Create language-specific prompts
+        # Get conversation context if available
+        detected_language = self.detect_language(query)
+        
+        # Enhanced prompts with better instructions
         if detected_language == 'english':
-            # English prompts
             if answer_type == "establishment":
-                prompt = f"""You are a legal expert specialized in Jordanian laws. Answer the following question based on the attached legal documents.
+                prompt = f"""You are a legal expert specialized in Jordanian laws. Answer the following question based on the legal documents provided.
 
 Jordanian Legal Documents:
 {context}{conversation_context}
 
 Question: {query}
 
-Important formatting and content instructions (Provide the most comprehensive and detailed answer possible):
-1. Start with a comprehensive title that summarizes the topic followed by a colon
-2. Organize the answer in detailed and extensive numbered points, each point containing:
-   - A comprehensive descriptive title followed by a colon (without any formatting symbols)
-   - Multiple detailed sub-points starting with dash (-) covering all aspects
-   - Specific legal reference for each sub-point
-   - Additional details and explanations for each point
-3. Use this format for references: "Legal Reference: [Law name and number for year], Article [article number]"
+CRITICAL INSTRUCTIONS FOR HIGH-QUALITY RESPONSES:
+1. Start with a comprehensive title summarizing the topic followed by a colon
+2. Organize the answer in detailed numbered points, each point containing:
+   - A detailed descriptive title followed by a colon (without any formatting symbols)
+   - Multiple comprehensive sub-points starting with dash (-) covering all aspects
+   - Specific legal reference for each sub-point using actual law names and articles
+   - Additional details and practical information for each point
+3. Use this EXACT format for references: "Legal Reference: [Exact Law name and number for year], Article [article number]"
 4. Do not use any formatting symbols like ** or * or ##
-5. Use extensive direct quotes from the legal texts attached above
-6. Specify in detail: competent government agencies, exact timeframes, all fees, required documents, conditions
+5. Use extensive direct quotes from the legal texts provided above
+6. Specify in comprehensive detail: competent government agencies, exact timeframes, precise fees in JOD, required documents, conditions
 7. Arrange steps chronologically for implementation with detailed explanation of each step
 8. Include all exceptions, special cases, and additional regulations
-9. Use only information found in the documents attached above
-10. Do not use generic references like "Document 1" or "Document 2"
+9. ONLY use information from the legal documents provided above - do not mention document limitations
+10. Use specific law names and article numbers from the provided documents
 11. Provide comprehensive coverage of all aspects related to the topic
-12. Include any supplementary information or helpful details from the documents
-13. Explain the legal background and objectives of the legislation
+12. Include supplementary information and practical guidance from the documents
+13. Focus on actionable information and specific requirements
 14. End with: "Notice: This information is for general guidance only. Consult a qualified attorney for personal legal advice."
 
 Answer:"""
             
             elif answer_type == "procedural":
-                prompt = f"""You are a legal expert specialized in Jordanian laws. Explain the legal procedures based on the attached documents.
+                prompt = f"""You are a legal expert specialized in Jordanian laws. Explain the complete legal procedures based on the provided documents.
 
 Jordanian Legal Documents:
 {context}{conversation_context}
 
 Question: {query}
 
-Important formatting and content instructions:
-1. Start with a title that summarizes the procedures followed by a colon
-2. Organize the answer in numbered points, each point containing:
+CRITICAL INSTRUCTIONS FOR COMPREHENSIVE PROCEDURAL GUIDANCE:
+1. Start with a title summarizing all procedures followed by a colon
+2. Organize the answer in detailed numbered points, each point containing:
    - A descriptive title for each procedure followed by a colon (without any formatting symbols)
-   - Sub-points starting with dash (-) explaining procedure details
-   - Specific legal reference for each sub-point
-3. Use this format for references: "Legal Reference: [Law name and number for year], Article [article number]"
+   - Multiple detailed sub-points starting with dash (-) explaining procedure specifics
+   - Specific legal reference for each sub-point with exact law citations
+   - Step-by-step breakdown of each major procedure
+3. Use this format for references: "Legal Reference: [Exact Law name and number for year], Article [article number]"
 4. Do not use any formatting symbols like ** or * or ##
-5. Use direct quotes from the legal texts attached above
-6. Specify competent agency, required documents, and timeframes
-7. Clarify any special conditions or controls
-8. Use only information from the documents attached above
-9. Do not use generic references like "Document 1" or "Document 2"
-10. End with: "Notice: This information is for general guidance only. Consult a qualified attorney for personal legal advice."
+5. Use extensive direct quotes from the legal texts provided above
+6. Specify in detail: competent agency, all required documents, exact timeframes, precise costs
+7. Clarify all special conditions, requirements, and regulatory controls
+8. Provide complete procedural workflow from start to finish
+9. ONLY use information from the provided legal documents
+10. Focus on practical implementation steps and requirements
+11. End with: "Notice: This information is for general guidance only. Consult a qualified attorney for personal legal advice."
 
 Required Procedures:"""
             
             else:  # general, requirements, registration
-                prompt = f"""You are a legal expert specialized in Jordanian laws. Answer the question based on the attached legal documents.
+                prompt = f"""You are a legal expert specialized in Jordanian laws. Provide a comprehensive answer based on the legal documents provided.
 
 Jordanian Legal Documents:
 {context}{conversation_context}
 
 Question: {query}
 
-Important formatting and content instructions:
-1. Start with a title that summarizes the topic followed by a colon
-2. Organize the answer in numbered points, each point containing:
-   - A descriptive title followed by a colon (without any formatting symbols)
-   - Sub-points starting with dash (-) explaining the details
-   - Specific legal reference for each sub-point
-3. Use this format for references: "Legal Reference: [Law name and number for year], Article [article number]"
+CRITICAL INSTRUCTIONS FOR COMPREHENSIVE LEGAL GUIDANCE:
+1. Start with a descriptive title summarizing the topic followed by a colon
+2. Organize the answer in detailed numbered points, each point containing:
+   - A comprehensive descriptive title followed by a colon (without any formatting symbols)
+   - Multiple detailed sub-points starting with dash (-) explaining all aspects
+   - Specific legal reference for each sub-point with exact citations
+   - Practical details and implementation guidance
+3. Use this format for references: "Legal Reference: [Exact Law name and number for year], Article [article number]"
 4. Do not use any formatting symbols like ** or * or ##
-5. Use direct quotes from the legal texts attached above in format: "Quote: [literal text]"
-6. Clarify any exceptions or special conditions
-7. Use only information found in the documents attached above
-8. Do not use generic references like "Document 1" or "Document 2"
-9. If specific information is not found, mention that the information needs confirmation from an attorney
-10. End with: "Notice: This information is for general guidance only. Consult a qualified attorney for personal legal advice."
+5. Use direct quotes from the legal texts provided above in format: "Quote: [literal text]"
+6. Clarify all exceptions, special conditions, and different scenarios
+7. Provide comprehensive technical, procedural, and practical details
+8. ONLY use information found in the provided legal documents
+9. Focus on specific, actionable information rather than general statements
+10. Include all relevant costs, timeframes, and requirements in detail
+11. End with: "Notice: This information is for general guidance only. Consult a qualified attorney for personal legal advice."
 
 Answer:"""
         
@@ -1008,88 +1018,94 @@ Answer:"""
 
 السؤال: {query}
 
-تعليمات مهمة للتنسيق والمحتوى (أجب بأكبر قدر من التفاصيل والشمولية):
-1. ابدأ بعنوان يلخص الموضوع متبوعاً بنقطتين
+تعليمات حاسمة لإجابات عالية الجودة (أجب بأكبر قدر من التفاصيل والشمولية):
+1. ابدأ بعنوان شامل يلخص الموضوع متبوعاً بنقطتين
 2. نظم الإجابة بصيغة نقاط مرقمة شاملة ومفصلة، كل نقطة تحتوي على:
    - عنوان وصفي مفصل متبوع بنقطتين (بدون أي رموز تنسيق)
    - نقاط فرعية متعددة وشاملة تبدأ بشرطة (-) تغطي جميع الجوانب
-   - مرجع قانوني محدد لكل نقطة فرعية
-   - تفاصيل إضافية عن كل نقطة
-3. استخدم الصيغة التالية للمراجع: "المرجع القانوني: [اسم القانون ورقمه ولسنته]، المادة [رقم المادة]"
+   - مرجع قانوني محدد لكل نقطة فرعية باستخدام أسماء القوانين الصحيحة
+   - تفاصيل إضافية وإرشادات عملية لكل نقطة
+3. استخدم الصيغة التالية للمراجع: "المرجع القانوني: [اسم القانون الصحيح ورقمه ولسنته]، المادة [رقم المادة]"
 4. لا تستخدم أي رموز تنسيق مثل ** أو * أو ##
-5. استخدم اقتباسات مباشرة ومطولة من النصوص القانونية المرفقة أعلاه
-6. حدد بتفصيل شامل: الجهات الحكومية المختصة، المدد الزمنية، الرسوم، الوثائق المطلوبة، الشروط الواجب توفرها
+5. استخدم اقتباسات مباشرة وواسعة من النصوص القانونية المرفقة أعلاه
+6. حدد بتفصيل شامل: الجهات الحكومية المختصة، المدد الزمنية الدقيقة، الرسوم بالدينار الأردني، الوثائق المطلوبة، الشروط الواجب توفرها
 7. رتب الخطوات حسب التسلسل الزمني للتنفيذ مع شرح مفصل لكل خطوة
 8. اذكر جميع الاستثناءات والحالات الخاصة والضوابط الإضافية
-9. استخدم فقط المعلومات الموجودة في الوثائق المرفقة أعلاه
-10. لا تستخدم مراجع عامة مثل "الوثيقة 1" أو "الوثيقة 2"
+9. استخدم فقط المعلومات الموجودة في الوثائق القانونية المرفقة أعلاه
+10. ركز على المعلومات القابلة للتطبيق والمتطلبات المحددة
 11. قدم شرحاً شاملاً ومفصلاً يغطي جميع الجوانب المتعلقة بالموضوع
-12. اذكر أي تفاصيل إضافية أو معلومات مساعدة موجودة في الوثائق
+12. اذكر جميع التكاليف والمدد الزمنية والمتطلبات بالتفصيل
 13. اختتم بـ: "تنبيه: هذه المعلومات للإرشاد العام فقط. استشر محامياً مؤهلاً للمشورة القانونية الشخصية."
 
 الإجابة:"""
             
             elif answer_type == "procedural":
-                prompt = f"""أنت خبير قانوني متخصص في القوانين الأردنية. قم بشرح الإجراءات القانونية بناءً على الوثائق المرفقة.
+                prompt = f"""أنت خبير قانوني متخصص في القوانين الأردنية. قم بشرح الإجراءات القانونية الكاملة بناءً على الوثائق المرفقة.
 
 الوثائق القانونية الأردنية:
 {context}{conversation_context}
 
 السؤال: {query}
 
-تعليمات مهمة للتنسيق والمحتوى (قدم أشمل وأدق التفاصيل الممكنة):
+تعليمات حاسمة للإرشاد الإجرائي الشامل (قدم أشمل وأدق التفاصيل الممكنة):
 1. ابدأ بعنوان شامل يلخص جميع الإجراءات متبوعاً بنقطتين
 2. نظم الإجابة بصيغة نقاط مرقمة مفصلة وشاملة، كل نقطة تحتوي على:
    - عنوان وصفي مفصل لكل إجراء متبوع بنقطتين (بدون أي رموز تنسيق)
    - نقاط فرعية متعددة ومفصلة تبدأ بشرطة (-) تشرح جميع تفاصيل الإجراء
-   - مرجع قانوني محدد لكل نقطة فرعية
+   - مرجع قانوني محدد لكل نقطة فرعية بأسماء القوانين الصحيحة
    - خطوات فرعية تحت كل إجراء رئيسي
-3. استخدم الصيغة التالية للمراجع: "المرجع القانوني: [اسم القانون ورقمه ولسنته]، المادة [رقم المادة]"
+3. استخدم الصيغة التالية للمراجع: "المرجع القانوني: [اسم القانون الصحيح ورقمه ولسنته]، المادة [رقم المادة]"
 4. لا تستخدم أي رموز تنسيق مثل ** أو * أو ##
-5. استخدم اقتباسات مباشرة ومطولة من النصوص القانونية المرفقة أعلاه
-6. حدد بتفصيل كامل: الجهة المختصة، جميع الوثائق المطلوبة، المدد الزمنية الدقيقة، الرسوم المالية
+5. استخدم اقتباسات مباشرة وواسعة من النصوص القانونية المرفقة أعلاه
+6. حدد بتفصيل كامل: الجهة المختصة، جميع الوثائق المطلوبة، المدد الزمنية الدقيقة، الرسوم المالية بالدينار
 7. وضح جميع الشروط والضوابط الخاصة والاستثناءات
-8. اذكر التفاصيل الإجرائية الدقيقة وأي متطلبات إضافية
-9. استخدم فقط المعلومات من الوثائق المرفقة أعلاه
-10. لا تستخدم مراجع عامة مثل "الوثيقة 1" أو "الوثيقة 2"
-11. اذكر أي بدائل إجرائية أو طرق متعددة للتنفيذ
-12. قدم معلومات شاملة عن كل خطوة من خطوات العملية
-13. اختتم بـ: "تنبيه: هذه المعلومات للإرشاد العام فقط. استشر محامياً مؤهلاً للمشورة القانونية الشخصية."
+8. قدم سير عمل إجرائي كامل من البداية للنهاية
+9. استخدم فقط المعلومات من الوثائق القانونية المرفقة أعلاه
+10. ركز على خطوات التنفيذ العملية والمتطلبات
+11. اذكر جميع التكاليف والمدد الزمنية بالتفصيل
+12. اختتم بـ: "تنبيه: هذه المعلومات للإرشاد العام فقط. استشر محامياً مؤهلاً للمشورة القانونية الشخصية."
 
 الإجراءات المطلوبة:"""
             
             else:  # general, requirements, registration
-                prompt = f"""أنت خبير قانوني متخصص في القوانين الأردنية. أجب على السؤال بناءً على الوثائق القانونية المرفقة.
+                prompt = f"""أنت خبير قانوني متخصص في القوانين الأردنية. قدم إجابة شاملة بناءً على الوثائق القانونية المرفقة.
 
 الوثائق القانونية الأردنية:
 {context}{conversation_context}
 
 السؤال: {query}
 
-تعليمات مهمة للتنسيق والمحتوى (قدم أشمل إجابة ممكنة مع جميع التفاصيل):
+تعليمات حاسمة للإرشاد القانوني الشامل (قدم أشمل إجابة ممكنة مع جميع التفاصيل):
 1. ابدأ بعنوان شامل يلخص الموضوع متبوعاً بنقطتين
 2. نظم الإجابة بصيغة نقاط مرقمة مفصلة جداً وشاملة، كل نقطة تحتوي على:
    - عنوان وصفي مفصل متبوع بنقطتين (بدون أي رموز تنسيق)
    - نقاط فرعية متعددة ومفصلة تبدأ بشرطة (-) تشرح جميع التفاصيل والجوانب
-   - مرجع قانوني محدد لكل نقطة فرعية
+   - مرجع قانوني محدد لكل نقطة فرعية بأسماء القوانين الصحيحة
    - توضيحات إضافية وأمثلة عملية
-3. استخدم الصيغة التالية للمراجع: "المرجع القانوني: [اسم القانون ورقمه ولسنته]، المادة [رقم المادة]"
+3. استخدم الصيغة التالية للمراجع: "المرجع القانوني: [اسم القانون الصحيح ورقمه ولسنته]، المادة [رقم المادة]"
 4. لا تستخدم أي رموز تنسيق مثل ** أو * أو ##
-5. استخدم اقتباسات مباشرة ومطولة من النصوص القانونية المرفقة أعلاه بالصيغة: "اقتباس: [النص الحرفي]"
+5. استخدم اقتباسات مباشرة وواسعة من النصوص القانونية المرفقة أعلاه بالصيغة: "اقتباس: [النص الحرفي]"
 6. وضح جميع الاستثناءات والشروط الخاصة والحالات المختلفة
 7. اذكر جميع التفاصيل الفنية والإجرائية والعملية
-8. اشرح الخلفية القانونية والأهداف من التشريع
-9. استخدم فقط المعلومات الموجودة في الوثائق المرفقة أعلاه
-10. لا تستخدم مراجع عامة مثل "الوثيقة 1" أو "الوثيقة 2"
-11. إذا لم تجد معلومة محددة، اذكر أن المعلومة تحتاج تأكيد من محام
-12. قدم معلومات مساعدة وإرشادات عملية
-13. اذكر أي تطبيقات عملية أو حالات خاصة
-14. اختتم بـ: "تنبيه: هذه المعلومات للإرشاد العام فقط. استشر محامياً مؤهلاً للمشورة القانونية الشخصية."
+8. قدم معلومات عملية وإرشادات قابلة للتطبيق
+9. استخدم فقط المعلومات الموجودة في الوثائق القانونية المرفقة أعلاه
+10. ركز على المعلومات المحددة والقابلة للتنفيذ بدلاً من العمومات
+11. اذكر جميع التكاليف والمدد الزمنية والمتطلبات بالتفصيل
+12. قدم إرشادات عملية وتطبيقات محددة
+13. اختتم بـ: "تنبيه: هذه المعلومات للإرشاد العام فقط. استشر محامياً مؤهلاً للمشورة القانونية الشخصية."
 
 الإجابة:"""
         
         # Generate answer using direct HTTP API
+        import os
+        import requests
+        import json
+        
         try:
+            # Direct HTTP client to avoid Railway interference
+            api_key = os.getenv('OPENAI_API_KEY')
+            openai_base_url = 'https://api.openai.com/v1/chat/completions'
+            
             headers = {
                 'Authorization': f"Bearer {api_key}",
                 'Content-Type': 'application/json'
